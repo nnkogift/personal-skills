@@ -33,13 +33,15 @@ root/
 │   └── mobile/       # Flutter
 ├── packages/
 │   ├── ui/           # Shared component library
-│   ├── config/       # Shared tsconfig, biome config
+│   ├── config/       # Shared tsconfig, eslint config
 │   └── types/        # Shared cross-app types only
-├── pnpm-workspace.yaml
-└── biome.json
+├── package.json      # workspaces: ["apps/*", "packages/*"]
+├── eslint.config.js
+└── .prettierrc
 ```
 
 - Apps live in `apps/`, shared code in `packages/`
+- Bun workspaces are declared in the root `package.json` `workspaces` field — no separate workspace file
 - Each package has its own `tsconfig.json` extending `packages/config/tsconfig.base.json`
 - Internal packages are referenced via workspace protocol: `"@repo/ui": "workspace:*"`
 - Never import across `apps/` — shared code always goes through `packages/`
