@@ -7,6 +7,8 @@ description: Rules and patterns for writing React forms. ALWAYS load this skill 
 
 React form architecture using `react-hook-form` and `zod`. Covers tooling, component structure, state handling, and file organisation.
 
+> Also load `../coding-standards/SKILL.md` — component rules, feature module structure, and TypeScript conventions apply to form files too.
+
 ---
 
 ## Tools

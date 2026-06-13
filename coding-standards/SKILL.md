@@ -218,3 +218,4 @@ Read these when working in a specific context:
 - `references/nextjs.md` — Next.js App Router patterns, caching, server actions
 - `references/flutter.md` — Flutter project structure, state management, offline-first patterns
 - `references/dhis2.md` — DHIS2 app conventions, data store patterns, DHIS2 UI library usage
+- `../forming/SKILL.md` — Full form architecture: react-hook-form + zod patterns, field arrays, server errors, validation modes
