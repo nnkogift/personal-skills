@@ -29,7 +29,7 @@ src/
   services/        ← business logic
   repositories/    ← database access (Prisma calls go here)
   schemas/         ← Zod schemas and inferred types
-  middleware/      ← auth, error handling, logging
+  proxy/      ← auth, error handling, logging
   utils/           ← domain-specific helpers
   types/           ← shared TypeScript types
   config.ts        ← env variable parsing and validation
@@ -66,4 +66,4 @@ export const config = schema.parse(process.env)
 - Never swallow errors silently (`catch (e) {}`).
 - Always log the error with context before handling or rethrowing.
 - Distinguish between operational errors (expected, handleable) and programmer errors (bugs, should crash).
-- Use a centralised error handler in Express/Hono middleware — don't handle HTTP error responses inside individual route handlers.
+- Use a centralised error handler in Express/Hono proxy — don't handle HTTP error responses inside individual route handlers.
