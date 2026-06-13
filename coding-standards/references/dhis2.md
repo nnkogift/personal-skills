@@ -6,24 +6,11 @@ Load this file when working on DHIS2 apps, DHIS2 integrations, or anything invol
 
 ## App Structure (DHIS2 Web Apps)
 
-DHIS2 web apps follow the standard Next.js or CRA structure with DHIS2-specific additions:
+App structure is bootstrapped by the DHIS2 app platform — do not hand-roll it.
+See the full skill: https://www.skills.sh/devotta-labs/dhis2-app-skills/dhis2-app-development
 
-```
-src/
-├── app/                     # Routes
-├── components/
-├── features/
-├── lib/
-│   ├── dhis2/
-│   │   ├── client.ts        # d2 or axios instance configured for DHIS2
-│   │   ├── dataStore.ts     # Data store helpers
-│   │   └── constants.ts     # DHIS2-specific constants (API versions, etc.)
-│   └── queryClient.ts
-├── hooks/
-│   └── dhis2/               # DHIS2-specific query hooks
-└── types/
-    └── dhis2.types.ts       # DHIS2 API response types
-```
+Follow that skill for directory layout, tooling setup, and DHIS2 CLI usage.
+Module organisation inside `src/` follows the **modules/** convention from coding-standards (not Next.js `_shared`).
 
 ---
 

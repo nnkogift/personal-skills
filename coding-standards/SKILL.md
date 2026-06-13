@@ -46,20 +46,31 @@ root/
 - Internal packages are referenced via workspace protocol: `"@repo/ui": "workspace:*"`
 - Never import across `apps/` — shared code always goes through `packages/`
 
-### Single App (Next.js)
+### Single App (Next.js App Router)
 
 ```
 src/
-├── app/              # Next.js App Router routes
-├── components/       # Shared/global components
-│   └── ui/           # Primitive UI components (buttons, inputs, etc.)
-├── features/         # Feature-scoped modules (see Component Rules)
-├── hooks/            # Global reusable hooks
+├── app/
+│   └── (invoices)/
+│       ├── page.tsx
+│       └── _shared/          # private folder — excluded from routing
+│           ├── components/
+│           ├── hooks/
+│           ├── utils/
+│           ├── schemas/
+│           └── types/
+├── shared/           # Cross-route shared code — promoted from _shared when used across routes
+│   ├── components/
+│   │   └── ui/       # Primitive UI components (buttons, inputs, etc.)
+│   ├── hooks/
+│   ├── utils/
+│   ├── schemas/
+│   └── types/
 ├── lib/              # Third-party client setup (queryClient, axios instance, etc.)
-├── utils/            # Utility functions (see Utility Rules)
-├── types/            # Shared TypeScript types and Zod schemas
 └── constants/        # App-wide constants
 ```
+
+- No standalone `src/hooks/`, `src/utils/`, or `src/types/` folders — everything global lives under `src/shared/`
 
 ---
 
@@ -87,25 +98,70 @@ These rules are strict. Follow them on every component you write or touch.
 
 ### Feature Modules
 
-Group everything a feature needs together:
+#### Next.js (App Router)
+
+Use Next.js private folders (`_shared`) co-located with routes. The `_` prefix is an official Next.js
+convention — the folder and all its subfolders are excluded from the routing system entirely.
 
 ```
-features/
-└── invoices/
-    ├── components/
-    │   ├── InvoiceTable.tsx
-    │   ├── InvoiceRow.tsx
-    │   └── InvoiceFilters.tsx
-    ├── hooks/
-    │   ├── useInvoices.ts         # TanStack Query hook
-    │   └── useInvoiceForm.ts      # React Hook Form logic
-    ├── utils/
-    │   └── invoice.utils.ts
-    ├── schemas/
-    │   └── invoice.schema.ts      # Zod schemas
-    └── types/
-        └── invoice.types.ts
+src/
+├── app/
+│   └── (invoices)/
+│       ├── page.tsx
+│       ├── [id]/
+│       │   ├── page.tsx
+│       │   └── _shared/              # scoped to this route only
+│       │       └── components/
+│       │           └── InvoiceDetail.tsx
+│       └── _shared/                  # shared across invoices routes
+│           ├── components/
+│           │   ├── InvoiceTable.tsx
+│           │   ├── InvoiceRow.tsx
+│           │   └── InvoiceFilters.tsx
+│           ├── hooks/
+│           │   ├── useInvoices.ts    # TanStack Query hook
+│           │   └── useInvoiceForm.ts
+│           ├── utils/
+│           │   └── invoice.utils.ts
+│           ├── schemas/
+│           │   └── invoice.schema.ts
+│           └── types/
+│               └── invoice.types.ts
+└── shared/                           # promoted here when used across multiple routes
+    └── components/
+        └── CurrencyDisplay.tsx
 ```
+
+- Place `_shared/` as close as possible to the route that uses it
+- Nest as deep as the route hierarchy demands
+- Create sub-folders (`components/`, `hooks/`, `utils/`, `schemas/`, `types/`, `constants/`) on demand — don't pre-scaffold empty ones
+- No barrel `index.ts` files inside `_shared/` — always import from the exact file path
+- Promote to `src/shared/` only when code spans multiple routes
+- `src/shared/` follows the same on-demand sub-folder composition; no barrel exports there either
+
+#### Other React apps / DHIS2 web apps
+
+Use a `modules/` folder at `src/` level. Cross-module shared code promotes to `src/shared/` — same convention as Next.js apps.
+
+```
+src/
+├── modules/
+│   └── invoices/
+│       ├── components/
+│       ├── hooks/
+│       ├── utils/
+│       ├── schemas/
+│       └── types/
+└── shared/           # promoted here when used across multiple modules
+    ├── components/
+    │   └── ui/
+    ├── hooks/
+    ├── utils/
+    ├── schemas/
+    └── types/
+```
+
+Rename any existing `features/` directory to `modules/`.
 
 ### Server vs Client Components (Next.js App Router)
 
@@ -120,11 +176,11 @@ features/
 
 ## Utility Rules
 
-- Utils live in `utils/` at feature or global scope depending on reuse
+- Utils live in `utils/` at the closest scope that covers their usage
 - Group utils by domain, not by type: `date.utils.ts`, `currency.utils.ts`, `dhis2.utils.ts`
 - Utils that only serve one component live in that component's folder
-- Utils that serve multiple components in a feature live in `features/<name>/utils/`
-- Utils used across features live in `src/utils/`
+- Utils that serve multiple components in a route/module live in that route's `_shared/utils/` (Next.js) or `modules/<name>/utils/` (other React apps)
+- Utils used across routes/modules live in `src/shared/utils/`
 - Multiple utils of the same domain can share a file as long as it remains cohesive and focused
 - Use `lodash-es` for collection manipulation, debouncing, deep clones, and object transforms — do not reimplement what
   lodash already does well
@@ -161,7 +217,7 @@ const useLoginForm = () => {
 ## Data Fetching
 
 - All server state is managed by TanStack Query (`@tanstack/react-query`) — no raw `useEffect` for fetching
-- Query keys are defined as typed constants in a `queryKeys.ts` file per feature
+- Query keys are defined as typed constants in a `queryKeys.ts` file inside the module's `constants/` folder: `_shared/constants/queryKeys.ts` (Next.js) or `modules/<name>/constants/queryKeys.ts` (other apps); promote to `src/shared/constants/` only when keys are shared across modules
 - Every query lives in a dedicated hook: `useInvoices.ts`, `usePatientById.ts`
 - Mutations follow the same pattern with `useMutation` and always include `onError` handling
 - Never put TanStack Query logic directly inside a component — always a hook
@@ -217,5 +273,5 @@ Read these when working in a specific context:
 
 - `references/nextjs.md` — Next.js App Router patterns, caching, server actions
 - `references/flutter.md` — Flutter project structure, state management, offline-first patterns
-- `references/dhis2.md` — DHIS2 app conventions, data store patterns, DHIS2 UI library usage
+- `references/dhis2.md` — DHIS2 API conventions, data store patterns, UI library usage, and app platform bootstrapping
 - `../forming/SKILL.md` — Full form architecture: react-hook-form + zod patterns, field arrays, server errors, validation modes
