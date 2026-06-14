@@ -1,22 +1,25 @@
 ---
 name: dev-tooling
-description: Gift's non-negotiable development tools and their correct configuration. ALWAYS load this skill when initializing a project, adding dependencies, configuring linting, formatting, testing, CI/CD, Docker, databases, auth, or when any of these tools are mentioned: Bun, ESLint, Prettier, Fallow, Playwright, Vitest, Docker, Prisma, PostgreSQL, GitHub Actions, TanStack Query, React Hook Form, Zod, lodash-es, better_auth. Also load when someone asks what tools to use for a given problem.
+description: "Gift's non-negotiable development tools and their correct configuration. ALWAYS load this skill when initializing a project, adding dependencies, configuring linting, formatting, testing, CI/CD, Docker, databases, auth, or when any of these tools are mentioned: Bun, ESLint, Prettier, Fallow, Playwright, Vitest, Docker, Prisma, PostgreSQL, GitHub Actions, TanStack Query, React Hook Form, Zod, lodash-es, better_auth. Also load when someone asks what tools to use for a given problem."
 ---
+
 # Dev Tooling
 
-These tools are non-negotiable. Do not suggest alternatives. Do not introduce tools from outside this list without explicit approval. When starting any project, set these up first before writing feature code.
+These tools are non-negotiable. Do not suggest alternatives. Do not introduce tools from outside this list without
+explicit approval. When starting any project, set these up first before writing feature code.
 
 ***
 
 ## Runtime & Package Management
 
-| Context                                      | Tool                                              |
-| -------------------------------------------- | ------------------------------------------------- |
-| All JavaScript/TypeScript projects           | **Bun**                                           |
-| DHIS2 projects (app platform & app runtime)  | **pnpm** (required by DHIS2 toolchain)            |
+| Context                                     | Tool                                   |
+|---------------------------------------------|----------------------------------------|
+| All JavaScript/TypeScript projects          | **Bun**                                |
+| DHIS2 projects (app platform & app runtime) | **pnpm** (required by DHIS2 toolchain) |
 
 - `bun.lock` is the lock file — commit it, never delete it
-- Bun workspaces are configured via the `workspaces` field in the root `package.json` — no separate workspace file needed
+- Bun workspaces are configured via the `workspaces` field in the root `package.json` — no separate workspace file
+  needed
 - Never mix package managers in the same repo — lock file wins
 
 ***
@@ -33,21 +36,21 @@ import tsParser from '@typescript-eslint/parser'
 import prettierConfig from 'eslint-config-prettier'
 
 export default [
-  js.configs.recommended,
-  {
-    files: ['**/*.{ts,tsx}'],
-    plugins: { '@typescript-eslint': tsPlugin },
-    languageOptions: {
-      parser: tsParser,
-      parserOptions: { project: true },
+    js.configs.recommended,
+    {
+        files: ['**/*.{ts,tsx}'],
+        plugins: {'@typescript-eslint': tsPlugin},
+        languageOptions: {
+            parser: tsParser,
+            parserOptions: {project: true},
+        },
+        rules: {
+            ...tsPlugin.configs.recommended.rules,
+            '@typescript-eslint/no-explicit-any': 'error',
+            '@typescript-eslint/no-unused-vars': 'error',
+        },
     },
-    rules: {
-      ...tsPlugin.configs.recommended.rules,
-      '@typescript-eslint/no-explicit-any': 'error',
-      '@typescript-eslint/no-unused-vars': 'error',
-    },
-  },
-  prettierConfig,
+    prettierConfig,
 ]
 ```
 
@@ -63,7 +66,8 @@ export default [
 ```
 
 - CI pipeline fails on any ESLint error
-- VSCode extensions: `dbaeumer.vscode-eslint` + `esbenp.prettier-vscode` — set Prettier as default formatter in workspace settings
+- VSCode extensions: `dbaeumer.vscode-eslint` + `esbenp.prettier-vscode` — set Prettier as default formatter in
+  workspace settings
 - `bun eslint --fix . && bun prettier --write .` as the pre-commit format step
 
 ***
@@ -77,6 +81,7 @@ bun add -d fallow
 ```
 
 What it finds:
+
 - **Dead code** — unused files, exports, types, and dependencies
 - **Duplication** — repeated logic across the codebase
 - **Health** — complexity hotspots and refactor targets
@@ -101,7 +106,7 @@ fallow fix --dry-run # preview automatic cleanup
 ## Testing
 
 | Layer                   | Tool                                   |
-| ----------------------- | -------------------------------------- |
+|-------------------------|----------------------------------------|
 | Unit & integration      | **Vitest**                             |
 | End-to-end              | **Playwright**                         |
 | React component testing | **@testing-library/react** with Vitest |
@@ -113,13 +118,14 @@ fallow fix --dry-run # preview automatic cleanup
 
 ```ts
 // vitest.config.ts baseline
-import { defineConfig } from 'vitest/config'
+import {defineConfig} from 'vitest/config'
+
 export default defineConfig({
-  test: {
-    environment: 'jsdom',
-    globals: true,
-    setupFiles: ['./src/test/setup.ts'],
-  },
+		test: {
+				environment: 'jsdom',
+				globals: true,
+				setupFiles: ['./src/test/setup.ts'],
+		},
 })
 ```
 
@@ -128,7 +134,7 @@ export default defineConfig({
 ## Database
 
 | Concern           | Tool                    |
-| ----------------- | ----------------------- |
+|-------------------|-------------------------|
 | Database          | **PostgreSQL** (always) |
 | ORM               | **Prisma**              |
 | Schema migrations | **Prisma Migrate**      |
@@ -142,18 +148,18 @@ export default defineConfig({
 ```yaml
 # docker-compose.yml — local dev services
 services:
-  db:
-    image: postgres:16-alpine
-    environment:
-      POSTGRES_DB: appdb
-      POSTGRES_USER: appuser
-      POSTGRES_PASSWORD: apppassword
-    ports:
-      - "5432:5432"
-    volumes:
-      - pgdata:/var/lib/postgresql/data
+    db:
+        image: postgres:16-alpine
+        environment:
+            POSTGRES_DB: appdb
+            POSTGRES_USER: appuser
+            POSTGRES_PASSWORD: apppassword
+        ports:
+            - "5432:5432"
+        volumes:
+            - pgdata:/var/lib/postgresql/data
 volumes:
-  pgdata:
+    pgdata:
 ```
 
 ***
@@ -207,24 +213,24 @@ lint → type-check → unit-test → build → e2e → deploy
 ```yaml
 # .github/workflows/ci.yml baseline
 name: CI
-on: [push, pull_request]
+on: [ push, pull_request ]
 jobs:
-  lint:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
-      - run: bun install --frozen-lockfile
-      - run: bun eslint .
-      - run: bun prettier --check .
+    lint:
+        runs-on: ubuntu-latest
+        steps:
+            -   uses: actions/checkout@v4
+            -   uses: oven-sh/setup-bun@v2
+            -   run: bun install --frozen-lockfile
+            -   run: bun eslint .
+            -   run: bun prettier --check .
 
-  test:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: actions/checkout@v4
-      - uses: oven-sh/setup-bun@v2
-      - run: bun install --frozen-lockfile
-      - run: bun test --run
+    test:
+        runs-on: ubuntu-latest
+        steps:
+            -   uses: actions/checkout@v4
+            -   uses: oven-sh/setup-bun@v2
+            -   run: bun install --frozen-lockfile
+            -   run: bun test --run
 ```
 
 - Secrets live in GitHub Environments — never hardcoded, never in `.env` committed to the repo
@@ -236,7 +242,7 @@ jobs:
 ## Frontend (React / Next.js)
 
 | Concern                      | Tool                                         |
-| ---------------------------- | -------------------------------------------- |
+|------------------------------|----------------------------------------------|
 | Server state & data fetching | **TanStack Query** (`@tanstack/react-query`) |
 | Forms                        | **React Hook Form** (`react-hook-form`)      |
 | Schema validation            | **Zod**                                      |
@@ -247,38 +253,38 @@ jobs:
 
 ```ts
 // lib/queryClient.ts
-import { QueryClient } from '@tanstack/react-query'
+import {QueryClient} from '@tanstack/react-query'
 
 export const queryClient = new QueryClient({
-  defaultOptions: {
-    queries: {
-      staleTime: 1000 * 60 * 5,    // 5 minutes
-      retry: 1,
-      refetchOnWindowFocus: false,
-    },
-  },
+		defaultOptions: {
+				queries: {
+						staleTime: 1000 * 60 * 5,    // 5 minutes
+						retry: 1,
+						refetchOnWindowFocus: false,
+				},
+		},
 })
 ```
 
 ### React Hook Form + Zod Pattern
 
 ```ts
-import { useForm } from 'react-hook-form'
-import { zodResolver } from '@hookform/resolvers/zod'
-import { z } from 'zod'
+import {useForm} from 'react-hook-form'
+import {zodResolver} from '@hookform/resolvers/zod'
+import {z} from 'zod'
 
 const schema = z.object({
-  name: z.string().min(1, 'Name is required'),
-  email: z.string().email(),
+		name: z.string().min(1, 'Name is required'),
+		email: z.string().email(),
 })
 
 type FormValues = z.infer<typeof schema>
 
 export const useContactForm = () => {
-  return useForm<FormValues>({
-    resolver: zodResolver(schema),
-    defaultValues: { name: '', email: '' },
-  })
+		return useForm<FormValues>({
+				resolver: zodResolver(schema),
+				defaultValues: {name: '', email: ''},
+		})
 }
 ```
 
@@ -286,7 +292,8 @@ export const useContactForm = () => {
 
 - Import individual functions to preserve tree-shaking: `import { groupBy, debounce } from 'lodash-es'`
 - Never `import _ from 'lodash-es'` and use `_.method()` — always named imports
-- Use for: collection transforms (`groupBy`, `keyBy`, `chunk`, `uniqBy`), `debounce`/`throttle`, `cloneDeep`, `merge`, `omit`, `pick`
+- Use for: collection transforms (`groupBy`, `keyBy`, `chunk`, `uniqBy`), `debounce`/`throttle`, `cloneDeep`, `merge`,
+  `omit`, `pick`
 
 ***
 
