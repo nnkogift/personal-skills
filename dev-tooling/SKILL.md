@@ -1,6 +1,6 @@
 ---
 name: dev-tooling
-description: "Gift's non-negotiable development tools and their correct configuration. ALWAYS load this skill when initializing a project, adding dependencies, configuring linting, formatting, testing, CI/CD, Docker, databases, auth, or when any of these tools are mentioned: Bun, ESLint, Prettier, Fallow, Playwright, Vitest, Docker, Prisma, PostgreSQL, GitHub Actions, TanStack Query, React Hook Form, Zod, lodash-es, better_auth. Also load when someone asks what tools to use for a given problem."
+description: "Gift's non-negotiable development tools and their correct configuration. ALWAYS load this skill when initializing a project, adding dependencies, configuring linting, formatting, testing, CI/CD, Docker, databases, auth, notifications, or email, or when any of these tools are mentioned: Bun, Biome, ESLint, Prettier, Fallow, Playwright, Vitest, Docker, Prisma, PostgreSQL, GitHub Actions, TanStack Query, React Hook Form, Zod, lodash-es, better_auth, Novu, react-email, pg-boss, RabbitMQ. Also load when someone asks what tools to use for a given problem."
 ---
 
 # Dev Tooling
@@ -21,15 +21,64 @@ explicit approval. When starting any project, set these up first before writing 
 - Bun workspaces are configured via the `workspaces` field in the root `package.json` — no separate workspace file
   needed
 - Never mix package managers in the same repo — lock file wins
+- Bun is also the test runner (`bun test`) and build tool (`bun run build`, `bun build`) for all non-DHIS2 projects —
+  don't reach for a separate runner/bundler where Bun already covers it
+- Always track the latest stable version of every tool in this document — don't pin to an old major version out of
+  habit; run upgrades regularly instead of freezing on first install
 
 ***
 
 ## Linting & Formatting
 
-**Tools: ESLint v9 (flat config) + Prettier**
+**Tool: Biome** for all projects — replaces ESLint + Prettier
+
+```bash
+bun add -d @biomejs/biome
+```
+
+```json
+// biome.json — root of every project
+{
+  "$schema": "https://biomejs.dev/schemas/latest/schema.json",
+  "linter": {
+    "enabled": true,
+    "rules": {
+      "recommended": true,
+      "suspicious": {
+        "noExplicitAny": "error"
+      },
+      "correctness": {
+        "noUnusedVariables": "error"
+      }
+    }
+  },
+  "formatter": {
+    "enabled": true,
+    "indentStyle": "space",
+    "indentWidth": 2,
+    "lineWidth": 100
+  },
+  "javascript": {
+    "formatter": {
+      "quoteStyle": "single",
+      "trailingCommas": "es5",
+      "semicolons": "always"
+    }
+  }
+}
+```
+
+- CI pipeline fails on any Biome lint or format error
+- VSCode extension: `biomejs.biome` — set Biome as the default formatter in workspace settings
+- `bun biome check --write .` as the pre-commit format step
+
+### DHIS2 exception
+
+DHIS2 apps keep **ESLint v9 (flat config) + Prettier** — the DHIS2 App Platform toolchain assumes them, don't swap in
+Biome for these projects.
 
 ```js
-// eslint.config.js — root of every project
+// eslint.config.js — DHIS2 apps only
 import js from '@eslint/js'
 import tsPlugin from '@typescript-eslint/eslint-plugin'
 import tsParser from '@typescript-eslint/parser'
@@ -55,7 +104,7 @@ export default [
 ```
 
 ```json
-// .prettierrc — root of every project
+// .prettierrc — DHIS2 apps only
 {
   "singleQuote": true,
   "trailingComma": "es5",
@@ -65,10 +114,8 @@ export default [
 }
 ```
 
-- CI pipeline fails on any ESLint error
-- VSCode extensions: `dbaeumer.vscode-eslint` + `esbenp.prettier-vscode` — set Prettier as default formatter in
-  workspace settings
-- `bun eslint --fix . && bun prettier --write .` as the pre-commit format step
+- VSCode extensions: `dbaeumer.vscode-eslint` + `esbenp.prettier-vscode`
+- `pnpm eslint --fix . && pnpm prettier --write .` as the pre-commit format step
 
 ***
 
@@ -149,7 +196,7 @@ export default defineConfig({
 # docker-compose.yml — local dev services
 services:
     db:
-        image: postgres:16-alpine
+        image: postgres:alpine
         environment:
             POSTGRES_DB: appdb
             POSTGRES_USER: appuser
@@ -170,7 +217,7 @@ volumes:
 
 ```dockerfile
 # Pattern for Bun-based apps (Next.js, API servers, etc.)
-FROM oven/bun:1-alpine AS base
+FROM oven/bun:alpine AS base
 
 FROM base AS deps
 WORKDIR /app
@@ -195,7 +242,8 @@ CMD ["node", "server.js"]
 > DHIS2 projects use a pnpm-based Dockerfile — see the DHIS2 app development skill.
 
 - `.env` files are never copied into images — environment injected at runtime via Docker or orchestrator
-- Always pin base image versions: `oven/bun:1-alpine` not `oven/bun:alpine`
+- Always track the latest stable image tag (e.g. `oven/bun:alpine`, `postgres:alpine`) — don't pin to an old
+  major/minor version out of habit
 - `.dockerignore` excludes `node_modules`, `.next`, `.env*`, `*.log`
 
 ***
@@ -221,8 +269,7 @@ jobs:
             -   uses: actions/checkout@v4
             -   uses: oven-sh/setup-bun@v2
             -   run: bun install --frozen-lockfile
-            -   run: bun eslint .
-            -   run: bun prettier --check .
+            -   run: bun biome ci .
 
     test:
         runs-on: ubuntu-latest
@@ -233,6 +280,7 @@ jobs:
             -   run: bun test --run
 ```
 
+- DHIS2 CI workflows keep the `pnpm eslint .` / `pnpm prettier --check .` steps instead of Biome
 - Secrets live in GitHub Environments — never hardcoded, never in `.env` committed to the repo
 - Deployment jobs have `environment: production` set to require manual approval on sensitive deploys
 - Cache `node_modules` via `actions/cache` keyed on `bun.lock` hash
@@ -305,6 +353,33 @@ export const useContactForm = () => {
 - Session strategy: database sessions (not JWT) for revocability
 - Always use the `better_auth` adapter for Prisma — do not write auth tables manually
 - Social providers configured via environment variables only
+- Verification, password reset, and other auth emails are built with **react-email** components — see
+  Transactional Email below
+
+***
+
+## Notifications
+
+**Tool: Novu** for multi-channel notification infrastructure (in-app, email, push, SMS)
+
+- Use Novu workflows to orchestrate notification steps rather than hand-rolling per-channel dispatch logic
+- Notification templates and channel routing live in the Novu dashboard/workflow definitions, not scattered across
+  application code
+- Trigger workflows from the backend via the Novu SDK using an idempotent event/subscriber identifier
+- Reach for Novu whenever a project needs more than a single one-off email — anything with in-app, push, or
+  multi-channel delivery
+
+***
+
+## Transactional Email
+
+**Tool: react-email** for composing email templates
+
+- Templates live under `emails/` and are written as React components — no raw HTML strings
+- Render with `@react-email/render` before handing off to the sending provider (directly, or as the email step in
+  a Novu workflow)
+- Use `react-email` for every transactional email in a project — auth flows via better_auth, notification emails
+  via Novu, and any other system email
 
 ***
 
@@ -321,8 +396,12 @@ export const useContactForm = () => {
 
 ## Queue / Background Jobs (Lightweight)
 
-**Tool: BullMQ** (when RabbitMQ is overkill — simple job queues in a single service)
+**Tool: pg-boss** (when RabbitMQ is overkill — simple job queues in a single service, backed by Postgres)
 
-- Redis as the backing store
+```bash
+bun add pg-boss
+```
+
+- Uses the project's existing PostgreSQL database as the backing store — no separate Redis instance to provision
 - Always define job types with Zod schemas
 - Separate worker processes from the main API server
