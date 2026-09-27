@@ -15,7 +15,7 @@ This reference defines backend runtime conventions, the default framework, proje
 
 - **[Elysia](https://elysiajs.com/)** is the backend framework of choice whenever a project or task does not explicitly name one. Do not reach for Express, Hono, Fastify, or NestJS unless the project already uses them or the user asks for them.
 - **Fetch the current docs before writing code**: Elysia moves fast. Check the installed `elysia` version in `package.json` and consult https://elysiajs.com/llms.txt (Markdown index of every docs page) instead of relying on memorized APIs.
-- **Official packages use the `@elysia/*` scope** (e.g. `@elysia/eden`, `@elysia/openapi`, `@elysia/cors`, `@elysia/jwt`, `@elysia/bearer`, `@elysia/cron`, `@elysia/static`, `@elysia/opentelemetry`). Prefer an official plugin over a hand-rolled equivalent.
+- **Official packages use the `@elysia/*` scope** (e.g. `@elysia/eden`, `@elysia/openapi`, `@elysia/cors`, `@elysia/jwt`, `@elysia/bearer`, `@elysia/static`, `@elysia/opentelemetry`). Prefer an official plugin over a hand-rolled equivalent. Scheduled work is the exception: use pg-boss (see [Background Jobs, Queues & Scheduling](#background-jobs-queues--scheduling-pg-boss)), not `@elysia/cron`.
 
 ```bash
 bun create elysia my-service   # new standalone service
@@ -85,13 +85,17 @@ src/
       service.ts       ← Business logic, framework-agnostic (no Elysia Context)
       repository.ts    ← Database access for this module (all Prisma calls go here)
       model.ts         ← Zod schemas for request/response + inferred types
+      jobs.ts          ← pg-boss queue definitions + handlers owned by this module (only when needed)
       invoices.test.ts ← Controller tests via app.handle / Eden
+  lib/
+    boss.ts            ← Single PgBoss instance (see Background Jobs)
   plugins/             ← Cross-cutting named Elysia plugins: auth macro, error handler, logger, rate limiting
   utils/               ← Domain-agnostic helpers
   types/               ← Shared TypeScript type declarations
   config.ts            ← Environment variable parsing and validation
   app.ts               ← Composes plugins + modules, exports `app` and `type App`
   index.ts             ← Entry point: `app.listen(config.PORT)`
+  worker.ts            ← Worker entry point: starts pg-boss, registers queues, schedules, and handlers
 ```
 
 - Create modules on demand; do not pre-scaffold empty module folders.
@@ -109,9 +113,11 @@ export const CreateInvoiceBody = z.object({
   amount: z.number().positive(),
 })
 export const Invoice = CreateInvoiceBody.extend({ id: z.number() })
+export const InvoicePdfJob = z.object({ invoiceId: z.number().int().positive() }) // pg-boss payload
 
 export type CreateInvoiceBody = z.infer<typeof CreateInvoiceBody>
 export type Invoice = z.infer<typeof Invoice>
+export type InvoicePdfJob = z.infer<typeof InvoicePdfJob>
 ```
 
 ```ts
@@ -257,13 +263,94 @@ export const config = envSchema.parse(process.env)
 
 ---
 
-## Queue / Workers (RabbitMQ / BullMQ)
+## Background Jobs, Queues & Scheduling (pg-boss)
 
-- **Worker isolation**: One worker file per queue or job type.
-- **Idempotency**: All background jobs must be designed to be idempotent where possible.
-- **Contextual logging**: Log full context (job ID, payload shape, failure details) before rethrowing or acknowledging failed jobs.
-- **Dead-letter queues**: Configure DLQs for all production queues to isolate failed messages.
-- **Scheduled jobs** inside an Elysia service use `@elysia/cron`; long-running or retryable work still goes through the queue, not cron handlers.
+- **[pg-boss](https://pgboss.io/) is the default** for every kind of background work: queues, delayed jobs, retries, cron/RRULE schedules, dependent-job flows, pub/sub fan-out, throttling, and dead-lettering. It stores jobs in the project's PostgreSQL database, so no Redis or broker is needed. Don't use BullMQ, `node-cron`, `@elysia/cron`, or `setInterval` loops. RabbitMQ stays only for existing cross-service pipelines (see `dev-tooling`).
+- **Fetch the current docs before writing code**: check the installed `pg-boss` version and consult https://pgboss.io/ (v12+: `import { PgBoss } from 'pg-boss'`).
+- **One instance per process** in `src/lib/boss.ts`, built from the validated `config`, with an `error` listener wired to the logger.
+- **Queues are declared, not implied**: `createQueue()` must run before `send()`/`work()`. Each module declares its queues (name, policy, retry, expiry, `deadLetter`) next to its handlers in `jobs.ts`, and they are created idempotently at worker startup. Create dead-letter queues before the queues that reference them.
+- **Queue names are constants**: kebab-case, prefixed by module (`invoices-generate-pdf`). Never inline string literals at call sites.
+- **Zod at both ends**: each job payload has a Zod schema in the module's `model.ts`. Enqueue helpers parse before `send()`; handlers parse `job.data` before doing work.
+- **Enqueue through typed module helpers**: expose helpers such as `InvoiceJobs.enqueuePdf(input)` and call them from the service. Never call `boss.send()` directly in controllers, so queue names and payload shapes stay inside the module.
+- **Atomic enqueue**: when a job must exist only if a DB write commits, pass `{ db: fromPrisma(tx) }` inside `prisma.$transaction` (Prisma v7+ with `@prisma/adapter-pg`). For worker writes that must commit together with job completion, use `work(name, { transactional: true }, (jobs, tx) => …)`, but only for handlers that finish in seconds.
+- **Idempotency**: every handler must be safe to run twice. Expiry, heartbeat failures, and retries can all re-deliver a job. Use `singletonKey`, a queue `policy` (`singleton`, `stately`, `exclusive`), or `sendDebounced()`/`sendThrottled()` to stop duplicate jobs from being created.
+- **Failure handling**: rely on `retryLimit`/`retryDelay`/`retryBackoff` rather than catching and swallowing errors. Throw so pg-boss records the error in `output`. Every production queue has a `deadLetter` queue. Recover with `redrive()` after fixing the cause.
+- **Long jobs**: set `expireInSeconds` to the worst-case duration and `heartbeatSeconds` (≥ 10) so dead workers are detected quickly. Pass `job.signal` to `fetch`/SDK calls so aborted jobs stop early.
+- **Scheduling**: `boss.schedule(queue, cron, data, { tz, key, missed })` registers a schedule, and pg-boss fires it once across all replicas. Register schedules on every worker boot (it upserts). Use 5-field cron (minute resolution), or an RRULE for calendar rules like "last Friday of the month". Set `missed: 'once'` when a job missed during downtime should still run once. The scheduled queue still needs a worker.
+- **Dependencies and fan-out**: use `flow()` for jobs that must wait on other jobs (e.g. extract → load), and `subscribe()` + `publish()` when one domain event feeds several queues. Don't chain `send()` calls from inside handlers to fake either.
+- **Concurrency**: tune with `localConcurrency` (per process), `batchSize`, and `groupConcurrency` + `group` on `send()` for per-tenant fairness across nodes.
+- **Process isolation**: the API process only enqueues (`send`/`publish`). It still calls `await boss.start()` before `app.listen()`, but registers no handlers. Workers, schedules, and `work()` handlers run from `src/worker.ts` as a separate container using the same image with a different command. Both call `await boss.stop()` on `SIGTERM`.
+- **Contextual logging**: log job id, queue, and `retryCount` on failure before rethrowing.
+
+```ts
+// src/lib/boss.ts
+import { PgBoss } from 'pg-boss'
+import { config } from '../config'
+import { logger } from '../utils/logger'
+
+export const boss = new PgBoss(config.DATABASE_URL)
+
+boss.on('error', (err) => logger.error({ err }, 'pg-boss error'))
+```
+
+```ts
+// src/modules/invoices/jobs.ts
+import type { PgBoss } from 'pg-boss'
+import { boss } from '../../lib/boss'
+import { InvoicePdfJob } from './model'
+import { InvoiceService } from './service'
+
+export const INVOICE_QUEUES = {
+  generatePdf: 'invoices-generate-pdf',
+  generatePdfDlq: 'invoices-generate-pdf-dlq',
+  overdueReminders: 'invoices-overdue-reminders',
+} as const
+
+const NIGHTLY_AT_TWO = '0 2 * * *'
+
+export abstract class InvoiceJobs {
+  static enqueuePdf(input: InvoicePdfJob) {
+    return boss.send(INVOICE_QUEUES.generatePdf, InvoicePdfJob.parse(input), {
+      singletonKey: String(input.invoiceId),
+    })
+  }
+
+  static async register(worker: PgBoss) {
+    await worker.createQueue(INVOICE_QUEUES.generatePdfDlq)
+    await worker.createQueue(INVOICE_QUEUES.generatePdf, {
+      retryLimit: 5,
+      retryBackoff: true,
+      deadLetter: INVOICE_QUEUES.generatePdfDlq,
+    })
+    await worker.createQueue(INVOICE_QUEUES.overdueReminders, { policy: 'singleton' })
+
+    await worker.work(INVOICE_QUEUES.generatePdf, { localConcurrency: 5 }, async ([job]) => {
+      const { invoiceId } = InvoicePdfJob.parse(job.data)
+      return InvoiceService.generatePdf(invoiceId, { signal: job.signal })
+    })
+
+    await worker.schedule(INVOICE_QUEUES.overdueReminders, NIGHTLY_AT_TWO, null, {
+      tz: 'Africa/Dar_es_Salaam',
+      missed: 'once',
+    })
+    await worker.work(INVOICE_QUEUES.overdueReminders, () => InvoiceService.sendOverdueReminders())
+  }
+}
+```
+
+```ts
+// src/worker.ts
+import { boss } from './lib/boss'
+import { InvoiceJobs } from './modules/invoices/jobs'
+
+await boss.start()
+await InvoiceJobs.register(boss)
+
+process.on('SIGTERM', () => boss.stop())
+```
+
+- **Operations**: pg-boss manages its own `pgboss` schema and migrates it on `start()`, so never add its tables to `schema.prisma`. If the runtime DB role can't run DDL, run `pg-boss migrate` as a deploy step and pass `migrate: false`. Use `@pg-boss/dashboard` (protected, never public) to inspect queues, jobs, schedules, and warnings.
+- **Testing**: build the test instance with `__test__enableSpies: true` and await outcomes with `boss.getSpy(queue).waitForJob(predicate, 'completed')` or `waitForJobWithId(id, 'failed')`. Call `boss.clearSpies()` between tests. Use a `TestClock` (via the `clock` option) to exercise schedules and `resolveFlow()` to unblock flows deterministically. Never use `sleep()` in tests.
 
 ---
 
@@ -346,5 +433,5 @@ bun build --compile --minify-whitespace --minify-syntax --target bun --outfile s
 - Use `--minify-whitespace --minify-syntax` rather than `--minify` when OpenTelemetry is enabled (full minification mangles function names used in traces).
 - Packages that cannot be bundled (e.g. native drivers) are marked `--external <pkg>` and installed in the runtime image.
 - Elysia is single-threaded; scale horizontally (containers/replicas) first, and only use `node:cluster` for multi-core use of a single host when needed.
-- Add a `/health` route and graceful shutdown (`app.stop()` on `SIGTERM`) to every service.
+- Add a `/health` route and graceful shutdown (`app.stop()` on `SIGTERM`) to every service. Worker containers call `boss.stop()` so active jobs finish before exit.
 - Instrument production services with `@elysia/opentelemetry`.

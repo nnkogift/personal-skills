@@ -1,6 +1,6 @@
 ---
 name: dev-tooling
-description: "Gift's non-negotiable development tools and their correct configuration. ALWAYS load this skill when initializing a project, adding dependencies, choosing a backend framework, configuring linting, formatting, testing, CI/CD, Docker, databases, auth, notifications, or email, or when any of these tools are mentioned: Bun, Elysia, Biome, ESLint, Prettier, Fallow, Playwright, Vitest, Docker, Prisma, PostgreSQL, GitHub Actions, TanStack Query, React Hook Form, Zod, lodash-es, better_auth, Novu, react-email, pg-boss, RabbitMQ. Also load when someone asks what tools to use for a given problem."
+description: "Gift's non-negotiable development tools and their correct configuration. ALWAYS load this skill when initializing a project, adding dependencies, choosing a backend framework, configuring linting, formatting, testing, CI/CD, Docker, databases, auth, notifications, email, background jobs, queues, workers, or cron/scheduled tasks, or when any of these tools are mentioned: Bun, Elysia, Biome, ESLint, Prettier, Fallow, Playwright, Vitest, Docker, Prisma, PostgreSQL, GitHub Actions, TanStack Query, React Hook Form, Zod, lodash-es, better_auth, Novu, react-email, pg-boss, RabbitMQ, BullMQ, cron. Also load when someone asks what tools to use for a given problem."
 ---
 
 # Dev Tooling
@@ -37,7 +37,8 @@ bun create elysia my-service
 ```
 
 - Never Express, Hono, Fastify, or NestJS for new services unless the project already uses them or it's explicitly requested
-- Use official `@elysia/*` plugins (`@elysia/openapi`, `@elysia/eden`, `@elysia/cors`, `@elysia/cron`, `@elysia/opentelemetry`) before hand-rolling equivalents
+- Use official `@elysia/*` plugins (`@elysia/openapi`, `@elysia/eden`, `@elysia/cors`, `@elysia/opentelemetry`) before hand-rolling equivalents
+- Scheduled/cron work goes through **pg-boss** (see Background Jobs, Queues & Scheduling below), not `@elysia/cron`
 - Conventions, structure, and examples live in `coding-standards/references/backend.md`
 
 ***
@@ -397,25 +398,55 @@ export const useContactForm = () => {
 
 ***
 
-## Message Queues (Backend Pipelines)
+## Background Jobs, Queues & Scheduling
 
-**Tool: RabbitMQ** (for pipeline orchestration, e.g. CAPS)
+**Tool: [pg-boss](https://pgboss.io/)** — the default for **all** background work: job queues, retries, delayed jobs,
+cron/RRULE scheduling, job dependency flows, fan-out pub/sub, throttling/debouncing, and dead-letter handling. It runs on
+the project's existing PostgreSQL database (`SKIP LOCKED` under the hood) — no Redis, no separate broker to provision.
+
+```bash
+bun add pg-boss                   # core library + `pg-boss` CLI
+bun add @pg-boss/dashboard        # optional: web UI for queues, jobs, schedules, warnings
+```
+
+| Need                                  | pg-boss feature                                                      |
+|---------------------------------------|----------------------------------------------------------------------|
+| Fire-and-forget background work       | `createQueue()` + `send()` + `work()`                                |
+| Delayed / deferred jobs               | `sendAfter()` or the `startAfter` option                             |
+| Cron / recurring jobs                 | `schedule(queue, cron or RRULE, data, { tz, key, missed })`          |
+| Jobs that depend on other jobs (DAGs) | `flow([{ ref, name, data, dependsOn }])`                             |
+| One event → many queues               | `subscribe(event, queue)` + `publish(event, data)`                   |
+| Rate limiting / de-duplication        | `sendThrottled()`, `sendDebounced()`, `singletonKey`, queue `policy` |
+| Per-entity ordering                   | `key_strict_fifo` policy + `singletonKey`                            |
+| Per-tenant fairness                   | `group` on `send()` + `groupConcurrency` on `work()`                 |
+| Retries & failure isolation           | `retryLimit`, `retryBackoff`, `deadLetter` queue, `redrive()`        |
+| Enqueue atomically with app writes    | `{ db: fromPrisma(tx) }` inside `prisma.$transaction`                |
+| Low-latency dispatch                  | `useListenNotify: true` + queue `notify: true`                       |
+
+- **Never** BullMQ/Redis, Agenda, `node-cron`, `@elysia/cron`, `setInterval` loops, or hand-rolled "jobs" tables for
+  background or scheduled work — pg-boss covers all of them and is safe across multiple replicas (a schedule fires once)
+- Track the latest major (v12+): `import { PgBoss } from 'pg-boss'` (named export). Check https://pgboss.io/ before
+  writing code rather than relying on memorised APIs
+- One `PgBoss` instance per process, created in `lib/boss.ts` from the validated `DATABASE_URL`, with
+  `boss.on('error', …)` wired to the logger before `await boss.start()`
+- Queues must exist before `send()`/`work()` — declare every queue (policy, retry, expiry, `deadLetter`) in code and
+  create them idempotently at startup; create the dead-letter queue first
+- Every job payload is defined by a Zod schema and parsed on both the enqueue and the worker side
+- Handlers are idempotent — expiry, heartbeats and retries mean a job can run more than once
+- Workers run in a separate process/container from the HTTP API (same codebase, different entrypoint); the API only
+  enqueues. Call `await boss.stop()` on `SIGTERM` for graceful shutdown
+- pg-boss owns its own `pgboss` schema and migrates it on `start()` — never model its tables in `schema.prisma`. When
+  the app DB user lacks DDL rights, run `pg-boss migrate` in CI/deploy and start with `migrate: false`
+- Transactional enqueue via `fromPrisma(tx)` requires Prisma v7+ with `@prisma/adapter-pg`
+- Tests use `__test__enableSpies: true` + `boss.getSpy(queue).waitForJob(...)` and `TestClock` — no `sleep()` polling
+- Conventions, folder layout and examples live in `coding-standards/references/backend.md`
+
+### RabbitMQ exception
+
+**RabbitMQ** is kept only for existing cross-service/multi-language pipelines that already use it (e.g. CAPS), or when
+explicitly requested. Don't introduce it for new work.
 
 - One queue per pipeline step — not a single shared queue
 - Dead letter exchange configured on all queues
 - Messages are idempotent — processing the same message twice must be safe
 - Connection managed via a singleton with reconnect logic
-
-***
-
-## Queue / Background Jobs (Lightweight)
-
-**Tool: pg-boss** (when RabbitMQ is overkill — simple job queues in a single service, backed by Postgres)
-
-```bash
-bun add pg-boss
-```
-
-- Uses the project's existing PostgreSQL database as the backing store — no separate Redis instance to provision
-- Always define job types with Zod schemas
-- Separate worker processes from the main API server

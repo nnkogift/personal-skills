@@ -10,6 +10,7 @@
 - Schema changes via **Prisma Migrate** — never alter the database manually.
 - Never write raw SQL unless Prisma genuinely cannot express it, and add a comment explaining why.
 - All database access goes through a repository layer — Prisma client is never called directly from route handlers or services.
+- Background jobs and schedules live in the same PostgreSQL database via **pg-boss**, which owns and migrates its own `pgboss` schema. Never model pg-boss tables in `schema.prisma` and never query them with Prisma; use the pg-boss API instead (see `backend.md`).
 
 ## Schema Design
 

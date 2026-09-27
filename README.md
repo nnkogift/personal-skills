@@ -56,4 +56,4 @@ The `description` field drives when Claude auto-loads the skill — keep it prec
 ## Tools
 
 Key tools enforced by `dev-tooling`: Bun, ESLint v9 flat config, Prettier, Vitest, Playwright, Prisma, PostgreSQL,
-TanStack Query, React Hook Form, Zod, better_auth.
+TanStack Query, React Hook Form, Zod, better_auth, pg-boss (background jobs, queues & scheduling).
