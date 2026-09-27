@@ -1,6 +1,71 @@
 # Next.js App Router Reference
 
-Load this file when working on Next.js projects. It supplements the main coding-standards SKILL.md with App Router-specific patterns.
+Load this file when working on Next.js projects. It supplements the main `coding-standards` SKILL.md with App Router-specific patterns.
+
+---
+
+## Project Structure & Feature Modules
+
+Next.js App Router projects co-locate private feature code directly with routes using the `_shared` convention.
+
+### Route & Shared Layout
+
+```
+src/
+├── app/
+│   └── (invoices)/
+│       ├── page.tsx
+│       ├── [id]/
+│       │   ├── page.tsx
+│       │   └── _shared/              # Scoped exclusively to this route segment
+│       │       └── components/
+│       │           └── InvoiceDetail.tsx
+│       └── _shared/                  # Shared across all (invoices) routes
+│           ├── components/
+│           │   ├── InvoiceTable.tsx
+│           │   ├── InvoiceRow.tsx
+│           │   └── InvoiceFilters.tsx
+│           ├── hooks/
+│           │   ├── useInvoices.ts    # TanStack Query hook
+│           │   └── useInvoiceForm.ts
+│           ├── utils/
+│           │   └── invoice.utils.ts
+│           ├── schemas/
+│           │   └── invoice.schema.ts
+│           ├── types/
+│           │   └── invoice.types.ts
+│           └── constants/
+│               └── queryKeys.ts
+├── shared/                           # Promoted here when used across multiple distinct route groups
+│   ├── components/
+│   │   └── ui/                       # Primitive UI components (buttons, inputs, dialogs)
+│   ├── hooks/
+│   ├── utils/
+│   ├── schemas/
+│   └── types/
+├── lib/                              # Third-party client setup (queryClient, axios, env)
+└── constants/                        # App-wide constants
+```
+
+### Private Folder Rules (`_shared`)
+
+- The `_` prefix is an official Next.js convention: folders prefixed with `_` and their subfolders are completely excluded from routing.
+- **Proximity**: Place `_shared/` as close as possible to the routes that consume it.
+- **On-demand subfolders**: Create sub-folders (`components/`, `hooks/`, `utils/`, `schemas/`, `types/`, `constants/`) only when needed — avoid pre-scaffolding empty directories.
+- **No barrel files**: Do not use barrel `index.ts` files inside `_shared/` or `src/shared/`. Import from explicit file paths.
+- **Promotion to `src/shared/`**: Code starts local in `_shared/` and is promoted to `src/shared/` only when needed across multiple route groups.
+
+---
+
+## Server vs Client Components
+
+- **Server Components by default**: Never add `'use client'` unless the component strictly requires browser APIs, DOM event listeners (`onClick`, `onChange`), or React state/effects.
+- **Push `'use client'` down to leaves**: Keep layouts and high-level page wrappers as Server Components. Place `'use client'` on isolated leaf components (e.g. `<InvoiceFilterDropdown />`, `<SubmitButton />`).
+- **Data fetching boundaries**:
+  - Fetch data directly in Server Components using async/await.
+  - Or fetch client-side using TanStack Query in Client Components.
+  - Never mix both approaches within the same component.
+- **Layout data fetching**: Avoid fetching in `layout.tsx` unless data is truly global to that layout segment (e.g. user session, navigation metadata).
 
 ---
 
@@ -52,7 +117,7 @@ export default function Page() {
 
 // Client Component — resolves the promise
 'use client'
-import { use } from 'react'
+import { use, Suspense } from 'react'
 
 export function PostList({ posts }: { posts: Promise<Post[]> }) {
   const data = use(posts)
