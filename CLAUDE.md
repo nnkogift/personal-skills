@@ -24,7 +24,7 @@ The `description` field is the most important part — it drives when the skill 
 ## Key Skills
 
 - **`coding-standards/`** — TypeScript conventions, project structure, component rules, data fetching patterns, form patterns, API design, and git conventions. Load when writing or reviewing any code.
-- **`dev-tooling/`** — Non-negotiable tool choices (Bun, ESLint v9 flat config, Prettier, Vitest, Playwright, Prisma, PostgreSQL, TanStack Query, React Hook Form, Zod, better_auth, Fallow). Load when setting up projects or choosing libraries.
+- **`dev-tooling/`** — Non-negotiable tool choices (Bun, Elysia, ESLint v9 flat config, Prettier, Vitest, Playwright, Prisma, PostgreSQL, TanStack Query, React Hook Form, Zod, better_auth, Fallow). Load when setting up projects or choosing libraries.
 - **`forming/`** — React form architecture using `react-hook-form` and `zod`. Covers `FormProvider`, `Controller`, `useFieldArray`, validation modes, server errors, and dynamic defaults. Load when building or reviewing any form.
 - **`coding-standards/references/`** — Framework and domain-specific deep dives: `typescript.md`, `project-structure.md`, `react.md`, `nextjs.md`, `backend.md`, `database.md`, `flutter.md`, `dhis2.md`.
 

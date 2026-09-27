@@ -19,7 +19,7 @@ Always consult the specific reference guide for detailed patterns, conventions, 
 | **Project Structure & Monorepos** | `references/project-structure.md` | Bun workspaces, apps vs packages, dependency boundaries, single-app directory layouts |
 | **React & Frontend** | `references/react.md` | Component composition, file naming, props, feature modules, custom hooks, utilities, forms, TanStack Query |
 | **Next.js (App Router)** | `references/nextjs.md` | Route groups, `_shared` private folders, Server vs Client components, caching (`'use cache'`), Server Actions |
-| **Backend & APIs** | `references/backend.md` | Bun runtime, REST design, unified `ApiError` shape, Zod request validation, worker queues, error middleware |
+| **Backend & APIs** | `references/backend.md` | Bun runtime, **Elysia as the default framework**, feature modules, plugins/macros, REST design, unified `ApiError` shape, Zod request validation, OpenAPI + Eden, error plugin, testing, deployment, worker queues |
 | **Database & ORM** | `references/database.md` | PostgreSQL, Prisma schema design, relations, migrations, indexing, query performance |
 | **Flutter & Mobile** | `references/flutter.md` | Feature-first architecture, Riverpod state management, offline-first sync, widgets, GoRouter, forms |
 | **DHIS2 Web Apps & Integration** | `references/dhis2.md` | App platform conventions, versioned API paths, data store schemas, `@dhis2/ui`, climate integration |

@@ -1,6 +1,6 @@
 ---
 name: dev-tooling
-description: "Gift's non-negotiable development tools and their correct configuration. ALWAYS load this skill when initializing a project, adding dependencies, configuring linting, formatting, testing, CI/CD, Docker, databases, auth, notifications, or email, or when any of these tools are mentioned: Bun, Biome, ESLint, Prettier, Fallow, Playwright, Vitest, Docker, Prisma, PostgreSQL, GitHub Actions, TanStack Query, React Hook Form, Zod, lodash-es, better_auth, Novu, react-email, pg-boss, RabbitMQ. Also load when someone asks what tools to use for a given problem."
+description: "Gift's non-negotiable development tools and their correct configuration. ALWAYS load this skill when initializing a project, adding dependencies, choosing a backend framework, configuring linting, formatting, testing, CI/CD, Docker, databases, auth, notifications, or email, or when any of these tools are mentioned: Bun, Elysia, Biome, ESLint, Prettier, Fallow, Playwright, Vitest, Docker, Prisma, PostgreSQL, GitHub Actions, TanStack Query, React Hook Form, Zod, lodash-es, better_auth, Novu, react-email, pg-boss, RabbitMQ. Also load when someone asks what tools to use for a given problem."
 ---
 
 # Dev Tooling
@@ -25,6 +25,20 @@ explicit approval. When starting any project, set these up first before writing 
   don't reach for a separate runner/bundler where Bun already covers it
 - Always track the latest stable version of every tool in this document — don't pin to an old major version out of
   habit; run upgrades regularly instead of freezing on first install
+
+***
+
+## Backend Framework
+
+**Tool: Elysia** — the default HTTP framework for Bun services whenever a project doesn't already name one
+
+```bash
+bun create elysia my-service
+```
+
+- Never Express, Hono, Fastify, or NestJS for new services unless the project already uses them or it's explicitly requested
+- Use official `@elysia/*` plugins (`@elysia/openapi`, `@elysia/eden`, `@elysia/cors`, `@elysia/cron`, `@elysia/opentelemetry`) before hand-rolling equivalents
+- Conventions, structure, and examples live in `coding-standards/references/backend.md`
 
 ***
 
